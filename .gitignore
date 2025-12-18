@@ -25,6 +25,20 @@ paused_users.json
 watchlist.json
 price_alerts.json
 user_categories.json
+posted_events.json
+news_cache.json
+user_intervals.json
+
+# Payment & wallet data (CRITICAL - contains encrypted private keys!)
+user_wallets.json
+user_balances.json
+subscriptions.json
+usage_billing.json
+usage_tracking.json
+
+# Agent data
+agents.json
+intelligence.json
 
 # Test bot folder (not for production)
 test-bot/

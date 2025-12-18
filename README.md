@@ -1,29 +1,91 @@
-# Polydictions
+# Polydictor: Agentic Twitter Intelligence Platform
 
-CA: iATcGSt9DhJF9ZiJ6dmR153N7bW2G4J9dSSDxWSpumpㅤ
+**Real-time Twitter intelligence for Polymarket prediction markets, powered by AI**
 
-A Telegram bot for tracking and analyzing Polymarket prediction markets in real-time.
+Polydictor is an AI-powered intelligence platform that monitors Twitter for Polymarket events. Users paste a Polymarket URL, and an AI agent automatically configures monitoring, analyzes tweets, and delivers actionable insights via Telegram.
 
-## Features
+## 🎯 Overview
 
-- **Real-time Monitoring**: Automatic notifications for new Polymarket events
-- **Market Analysis**: Detailed event statistics including liquidity, volume, and current odds
-- **AI Context**: Market context powered by Polymarket's API
-- **Smart Filtering**: Filter events by custom keywords
-- **Pause/Resume**: Control notifications on-demand
+Polydictor transforms prediction market research by:
+- **Automated Monitoring**: AI configures Twitter monitoring based on event context
+- **Real-time Analysis**: Every relevant tweet analyzed by Grok for credibility & sentiment
+- **Intelligent Delivery**: High-priority signals sent immediately, others synthesized hourly
+- **Self-Optimization**: Rules refined every 6 hours based on performance metrics
 
-## Commands
+## 🏗️ Architecture
 
-- `/start` - Subscribe to event notifications
-- `/deal <link>` - Analyze a specific Polymarket event
-- `/keywords` - Set keyword filters for events
-- `/pause` - Pause notifications
-- `/resume` - Resume notifications
-- `/help` - Show help information
+### The Grok Rule Engine Model
 
-## Installation
+**Grok = Brain** (Makes all decisions)
+- Generates monitoring rules (accounts, keywords, filters)
+- Analyzes tweets when requested by agent
+- Refines rules every 6 hours based on performance
+- Makes all strategic decisions
+
+**Agent = Executor** (Follows instructions mechanically)
+- Applies Grok's rules
+- Fetches tweets via Twitter API
+- Routes intelligence to users
+- Reports performance metrics back to Grok
+- NO independent decision-making
+
+## 📊 System Flow
+
+```
+1. User Submits Event (Polymarket URL via Telegram)
+   ↓
+2. Grok Generates Initial Ruleset
+   • Searches Twitter for relevant accounts
+   • Generates event-specific keywords
+   • Defines filtering rules (relevance, credibility)
+   • Sets priority classification rules
+   ↓
+3. Agent Setup
+   • Validates accounts via Twitter API
+   • Creates Twitter Filtered Stream rule
+   • Spawns agent instance
+   ↓
+4. User Subscribes (USDC payment)
+   ↓
+5. Continuous Processing
+   • Twitter stream delivers tagged tweets
+   • Agent applies Grok's filtering rules
+   • Passes filters → Agent asks Grok for analysis
+   • Grok returns: relevance, sentiment, credibility, insights
+   • Agent stores and delivers based on priority
+   ↓
+6. Hourly Synthesis
+   • Agent collects past hour's intelligence
+   • Grok synthesizes into digest
+   • Digest delivered to all subscribers
+   ↓
+7. Rule Refinement (Every 6 Hours)
+   • Agent reports performance metrics
+   • Grok analyzes and generates updated ruleset
+   • Agent applies new rules
+   • System self-optimizes
+```
+
+## 🚀 Features
+
+### For Users
+- **Simple Setup**: Just paste a Polymarket URL
+- **Real-time Intelligence**: High-priority signals delivered immediately
+- **Hourly Digests**: Synthesized summaries of all activity
+- **Credibility Scoring**: Every tweet rated for trustworthiness
+- **Sentiment Analysis**: Understand market sentiment shifts
+- **Affordable**: ~$10 USDC per event (low Polygon fees)
+
+### For the System
+- **Adaptive Learning**: Rules improve based on performance
+- **Scalable**: Each event gets its own agent
+- **Efficient**: Twitter Filtered Streams (no polling)
+- **Persistent**: All intelligence stored for analysis
+
+## 📦 Installation
 
 ### Prerequisites
+
 
 - Python 3.8 or higher
 - A Telegram Bot Token from [@BotFather](https://t.me/BotFather)

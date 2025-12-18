@@ -1,2 +1,13 @@
 # Bot config
 BOT_TOKEN = "your_bot_token_here"
+
+# Polydictor - Twitter Intelligence Configuration
+GROK_API_KEY = "your_grok_api_key_here"
+TWITTER_BEARER_TOKEN = "your_twitter_bearer_token_here"
+
+# Payment System (Prepaid Wallets - Solana USDC)
+# Users get auto-generated wallets, funds deducted per /watch
+WATCH_PRICE_USDC = "10.0"  # Cost per event
+PLATFORM_WALLET_ADDRESS = "55BSkfcQM2QGA7HHNu13iY5SJB7KYvWJ2NgQJSthbHAE"  # Platform revenue wallet
+SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"  # Or use Helius/QuickNode
+

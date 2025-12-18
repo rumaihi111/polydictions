@@ -618,15 +618,15 @@ class PolydictionsBot:
         commands = [
             BotCommand(command="start", description="🚀 Subscribe to notifications"),
             BotCommand(command="deal", description="📊 Analyze event with AI"),
+            BotCommand(command="watch", description="🔍 Monitor event (Polydictor)"),
+            BotCommand(command="balance", description="💰 Check wallet balance"),
+            BotCommand(command="mystatus", description="📋 View subscriptions"),
             BotCommand(command="watchlist", description="📋 Show your watchlist"),
-            BotCommand(command="watch", description="⭐ Add event to watchlist"),
             BotCommand(command="interval", description="⏱️ Set update interval"),
             BotCommand(command="alerts", description="🔔 Show price alerts"),
             BotCommand(command="alert", description="⏰ Set price alert"),
             BotCommand(command="keywords", description="🔍 Set keyword filters"),
-            BotCommand(command="categories", description="📂 Show categories"),
             BotCommand(command="pause", description="⏸️ Pause notifications"),
-            BotCommand(command="resume", description="▶️ Resume notifications"),
             BotCommand(command="help", description="❓ Show help"),
         ]
 
@@ -1477,8 +1477,8 @@ class PolydictionsBot:
         api_server = APIServer(port=8765)
         await api_server.start()
 
-        # Start event monitoring
-        asyncio.create_task(self.check_new_events())
+        # Event monitoring disabled - using Polydictor intelligence instead
+        # asyncio.create_task(self.check_new_events())
 
         # Start watchlist news monitoring
         asyncio.create_task(self.check_watchlist_news())
