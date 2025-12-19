@@ -941,7 +941,15 @@ class AgentManager:
         
         return True
     
-    def remove_subscriber(self, event_slug: str, user_id: int) -> bool:
+    def is_user_subscribed(self, event_slug: str, user_id: int) -> bool:
+        """Check if user is subscribed to an event"""
+        agent = self.agents.get(event_slug)
+        if not agent:
+            return False
+        
+        return user_id in agent.subscribers
+    
+    async def remove_subscriber(self, event_slug: str, user_id: int) -> bool:
         """Remove a subscriber from an event"""
         agent = self.agents.get(event_slug)
         if not agent:
@@ -953,7 +961,7 @@ class AgentManager:
             
             # If no more subscribers, stop agent
             if not agent.subscribers:
-                asyncio.create_task(self.stop_agent(event_slug))
+                await self.stop_agent(event_slug)
         
         return True
 
