@@ -41,7 +41,7 @@ copy .env.example .env
 
 **Add your keys:**
 ```bash
-BOT_TOKEN=8166624440:AAGdlZ4QJUM_RG6tmAnGiK1DDogqNySPwVQ
+BOT_TOKEN=your_telegram_bot_token_here
 GROK_API_KEY=your_xai_key_here
 TWITTERAPIO_API_KEY=your_twitter_api_key_here
 PLATFORM_WALLET_ADDRESS=your_solana_address_here
