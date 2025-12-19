@@ -84,18 +84,59 @@ class UsageBilling:
         self.save_usage_data()
         logger.info(f"Initialized usage tracking for user {user_id}, event {event_slug}")
     
-    def record_grok_call(self, user_id: int, event_slug: str, call_type: str):
+    async def can_afford_grok_call(self, user_id: int) -> Dict:
         """
-        Record a Grok API call for billing.
+        Check if user has enough balance for a Grok call.
+        
+        Returns: {can_afford: bool, balance: float, message: str}
+        """
+        balance = await self.payment_system.check_user_balance(user_id)
+        
+        # Require at least one Grok call + 1 day of TwitterAPI.io fee remaining
+        min_required = GROK_COST_PER_CALL + TWITTER_API_DAILY_FEE
+        
+        if balance < min_required:
+            return {
+                "can_afford": False,
+                "balance": balance,
+                "message": f"Insufficient balance. Need ${min_required:.2f} (${GROK_COST_PER_CALL} Grok + ${TWITTER_API_DAILY_FEE} daily fee). Current: ${balance:.2f}"
+            }
+        
+        return {
+            "can_afford": True,
+            "balance": balance,
+            "message": f"Balance OK: ${balance:.2f}"
+        }
+    
+    async def record_grok_call(self, user_id: int, event_slug: str, call_type: str) -> Dict:
+        """
+        Record a Grok API call for billing with balance check.
         
         Args:
             call_type: 'analyze_tweet', 'synthesize_digest', or 'refine_ruleset'
+            
+        Returns: {success: bool, balance: float, message: str}
         """
+        # Check balance BEFORE recording charge
+        affordability = await self.can_afford_grok_call(user_id)
+        if not affordability["can_afford"]:
+            logger.warning(f"User {user_id} cannot afford Grok call: {affordability['message']}")
+            return {
+                "success": False,
+                "balance": affordability["balance"],
+                "message": affordability["message"],
+                "should_pause": True
+            }
+        
         user_id_str = str(user_id)
         
         if user_id_str not in self.usage_data or event_slug not in self.usage_data[user_id_str]:
             logger.warning(f"No usage tracking for user {user_id}, event {event_slug}")
-            return
+            return {
+                "success": False,
+                "balance": 0.0,
+                "message": "No usage tracking found"
+            }
         
         event_data = self.usage_data[user_id_str][event_slug]
         
@@ -107,9 +148,21 @@ class UsageBilling:
         event_data["total_grok_cost"] += GROK_COST_PER_CALL
         event_data["total_cost"] += GROK_COST_PER_CALL
         
+        # Deduct from balance
+        current_balance = await self.payment_system.check_user_balance(user_id)
+        new_balance = current_balance - GROK_COST_PER_CALL
+        self.payment_system.user_balances[user_id] = new_balance
+        self.payment_system.save_user_balances()
+        
         self.save_usage_data()
         
         logger.debug(f"Recorded Grok {call_type} for user {user_id}, event {event_slug} (+${GROK_COST_PER_CALL})")
+        
+        return {
+            "success": True,
+            "balance": new_balance,
+            "message": f"Grok call recorded. New balance: ${new_balance:.2f}"
+        }
     
     async def check_and_charge_daily_fee(self, user_id: int, event_slug: str) -> Dict:
         """
@@ -167,12 +220,22 @@ class UsageBilling:
             
             logger.info(f"✓ Charged user {user_id} daily fee: {TWITTER_API_DAILY_FEE} USDC for {event_slug}")
             
+            # Check if balance is getting low - send warnings
+            warning_message = None
+            if new_balance < 5.0:
+                # Critical: Less than 2 days remaining
+                warning_message = f"⚠️ LOW BALANCE WARNING\n\nYour balance is ${new_balance:.2f} USDC.\n\nYou have less than 2 days of monitoring remaining. Please deposit more funds to avoid service interruption.\n\n💰 Deposit: /deposit"
+            elif new_balance < 10.0:
+                # Warning: Less than 4 days remaining
+                warning_message = f"💡 Balance Notice\n\nYour balance is ${new_balance:.2f} USDC.\n\nYou have approximately {int(new_balance / 2.5)} days of monitoring remaining. Consider depositing more funds soon.\n\n💰 Deposit: /deposit"
+            
             return {
                 "charged": True,
                 "amount": TWITTER_API_DAILY_FEE,
                 "message": f"Daily TwitterAPI.io fee charged: {TWITTER_API_DAILY_FEE} USDC",
                 "new_balance": new_balance,
-                "signature": transfer_result["signature"]
+                "signature": transfer_result["signature"],
+                "warning": warning_message
             }
         else:
             logger.error(f"Failed to charge daily fee for user {user_id}")

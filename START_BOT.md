@@ -1,44 +1,92 @@
-# Quick Start - Mypolydictorbot
+# Quick Start - Mypolydictorbot (Local Machine)
 
-## 🚀 Start the Bot in 3 Minutes
+## 🚀 Run the Bot on Your Computer
 
-### 1. Clone & Install
+### Prerequisites
+- Python 3.10+ ([Download Python](https://www.python.org/downloads/))
+- Git ([Download Git](https://git-scm.com/downloads))
+- A terminal/command prompt
+
+### 1. Clone the Repository
+**Open Terminal (Mac/Linux) or Command Prompt (Windows):**
+
 ```bash
 git clone https://github.com/rumaihi111/polydictions.git
 cd polydictions
+```
+
+### 2. Install Dependencies
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Set Up Environment
+**If `pip` doesn't work, try:**
+- Windows: `py -m pip install -r requirements.txt`
+- Mac/Linux: `pip3 install -r requirements.txt`
+
+### 3. Set Up Your API Keys
+
+**Copy the example file:**
 ```bash
-# Copy the example
+# Mac/Linux
 cp .env.example .env
 
-# Edit with your API keys
-nano .env  # or use any text editor
+# Windows
+copy .env.example .env
 ```
 
-**Required Keys in `.env`:**
+**Edit the `.env` file:**
+- **Mac/Linux:** `nano .env` or use any text editor
+- **Windows:** `notepad .env` or use Notepad++
+
+**Add your keys:**
 ```bash
-BOT_TOKEN=your_telegram_bot_token_here
-GROK_API_KEY=your_xai_grok_api_key_here
-TWITTERAPIO_API_KEY=your_twitterapio_api_key_here
-PLATFORM_WALLET_ADDRESS=your_solana_wallet_address_here
-WALLET_MASTER_KEY=generate_with_command_below
+BOT_TOKEN=8166624440:AAGdlZ4QJUM_RG6tmAnGiK1DDogqNySPwVQ
+GROK_API_KEY=your_xai_key_here
+TWITTERAPIO_API_KEY=your_twitter_api_key_here
+PLATFORM_WALLET_ADDRESS=your_solana_address_here
+WALLET_MASTER_KEY=generate_this_next
 ```
 
 **Generate encryption key:**
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# Copy the output to WALLET_MASTER_KEY in .env
 ```
+Copy the output and paste it as `WALLET_MASTER_KEY` in your `.env` file.
 
-### 3. Run the Bot
+### 4. Run the Bot
 ```bash
 python bot.py
 ```
 
-**That's it!** Bot is now running at @Mypolydictorbot
+**If `python` doesn't work:**
+- Windows: `py bot.py`
+- Mac/Linux: `python3 bot.py`
+
+**You should see:**
+```
+INFO - Bot menu commands set up successfully
+INFO - Bot started with API server on port 8765
+INFO - Run polling for bot @Mypolydictorbot
+```
+
+✅ **Bot is now running!** Send `/start` to @Mypolydictorbot on Telegram.
+
+---
+
+## 🛑 Stop the Bot
+
+**Just press `Ctrl+C` in the terminal**
+
+---
+
+## 🔄 Run the Bot Again Later
+
+1. Open terminal
+2. Navigate to folder: `cd polydictions` (or `cd path/to/polydictions`)
+3. Run: `python bot.py`
+
+**That's it!** No need to reinstall or reconfigure.
 
 ---
 
@@ -62,7 +110,96 @@ pkill -f "python.*bot.py"
 
 ---
 
-## 🔧 Troubleshooting
+## � Folder Location Tips
+
+**Where did I download it?**
+- Mac: Usually in `/Users/yourname/polydictions`
+- Windows: Usually in `C:\Users\YourName\polydictions`
+- Check Downloads folder if you're not sure
+
+**To find it:**
+```bash
+# Mac/Linux
+pwd  # Shows current directory
+
+# Windows
+cd  # Shows current directory
+```
+
+**Navigate to it next time:**
+```bash
+cd polydictions
+```
+
+Or use the full path:
+```bash
+# Mac example
+cd /Users/yourname/polydictions
+
+# Windows example
+cd C:\Users\YourName\polydictions
+```
+
+---
+
+## 💻 Keep the Terminal Open
+
+**Important:** The bot runs AS LONG AS the terminal is open!
+
+- ✅ Terminal open = Bot running
+- ❌ Close terminal = Bot stops
+
+**Want it to run 24/7?** See "Run in Background" below.
+
+---
+
+## 🌙 Run in Background (Mac/Linux)
+
+**Keep bot running even after closing terminal:**
+```bash
+nohup python bot.py > bot.log 2>&1 &
+```
+
+**Check if it's running:**
+```bash
+ps aux | grep bot.py
+```
+
+**Stop it:**
+```bash
+pkill -f "python.*bot.py"
+```
+
+**View logs:**
+```bash
+tail -f bot.log
+```
+
+---
+
+## 🪟 Run in Background (Windows)
+
+**Option 1: Use pythonw (silent background)**
+```cmd
+pythonw bot.py
+```
+
+**Option 2: Use Task Scheduler**
+1. Open Task Scheduler
+2. Create Basic Task
+3. Action: Start a program
+4. Program: `python`
+5. Arguments: `bot.py`
+6. Start in: `C:\path\to\polydictions`
+
+**Stop it:**
+- Open Task Manager (`Ctrl+Shift+Esc`)
+- Find "python.exe" running bot.py
+- End task
+
+---
+
+## �🔧 Troubleshooting
 
 **"No module named X"**
 ```bash

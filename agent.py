@@ -375,6 +375,24 @@ class AgentManager:
             # CRITICAL DEVELOPMENT - Bypass all filters, immediate Grok analysis
             logger.warning(f"🚨 PRIORITY NODE triggered: @{author_username} - {priority_reason}")
             
+            # Check balance for ALL subscribers before making Grok call
+            for subscriber_id in agent.subscribers:
+                billing_result = await self.usage_billing.record_grok_call(
+                    subscriber_id, event_slug, "analyze_tweet_priority"
+                )
+                
+                if not billing_result.get("success"):
+                    # Insufficient balance - pause monitoring for this user
+                    logger.warning(f"⚠️ User {subscriber_id} low balance: {billing_result.get('message')}")
+                    await self._notify_low_balance_and_pause(subscriber_id, event_slug, billing_result)
+                    # Remove from subscribers list
+                    agent.subscribers.discard(subscriber_id)
+            
+            # If no subscribers left with sufficient balance, skip analysis
+            if not agent.subscribers:
+                logger.warning(f"No subscribers with sufficient balance for {event_slug}. Skipping Grok call.")
+                return
+            
             # Immediate Grok analysis
             analysis = await grok_engine.analyze_tweet(
                 tweet_text=tweet_text,
@@ -382,10 +400,6 @@ class AgentManager:
                 event_question=agent.event_question,
                 ruleset=agent.ruleset
             )
-            
-            # Track Grok usage for billing (all subscribers)
-            for subscriber_id in agent.subscribers:
-                self.usage_billing.record_grok_call(subscriber_id, event_slug, "analyze_tweet_priority")
             
             if analysis:
                 # Force high priority for immediate delivery
@@ -416,7 +430,25 @@ class AgentManager:
             logger.debug(f"Tweet from @{author_username} pre-filtered out (low engagement/quality)")
             return
         
-        # Passed pre-filter, now get Grok's analysis
+        # Passed pre-filter - check balance for ALL subscribers before making Grok call
+        for subscriber_id in agent.subscribers:
+            billing_result = await self.usage_billing.record_grok_call(
+                subscriber_id, event_slug, "analyze_tweet"
+            )
+            
+            if not billing_result.get("success"):
+                # Insufficient balance - pause monitoring for this user
+                logger.warning(f"⚠️ User {subscriber_id} low balance: {billing_result.get('message')}")
+                await self._notify_low_balance_and_pause(subscriber_id, event_slug, billing_result)
+                # Remove from subscribers list
+                agent.subscribers.discard(subscriber_id)
+        
+        # If no subscribers left with sufficient balance, skip analysis
+        if not agent.subscribers:
+            logger.warning(f"No subscribers with sufficient balance for {event_slug}. Skipping Grok call.")
+            return
+        
+        # Now get Grok's analysis
         logger.info(f"Analyzing tweet from @{author_username} for {event_slug}")
         
         analysis = await grok_engine.analyze_tweet(
@@ -425,10 +457,6 @@ class AgentManager:
             event_question=agent.event_question,
             ruleset=agent.ruleset
         )
-        
-        # Track Grok usage for billing (all subscribers)
-        for subscriber_id in agent.subscribers:
-            self.usage_billing.record_grok_call(subscriber_id, event_slug, "analyze_tweet")
         
         if not analysis:
             logger.warning("Failed to get Grok analysis")
@@ -659,14 +687,28 @@ class AgentManager:
         
         logger.info(f"Synthesizing digest from {len(recent_intelligence)} tweets...")
         
+        # Check balance for ALL subscribers before making Grok call
+        for subscriber_id in agent.subscribers:
+            billing_result = await self.usage_billing.record_grok_call(
+                subscriber_id, event_slug, "synthesize_digest"
+            )
+            
+            if not billing_result.get("success"):
+                # Insufficient balance - pause monitoring for this user
+                logger.warning(f"⚠️ User {subscriber_id} low balance: {billing_result.get('message')}")
+                await self._notify_low_balance_and_pause(subscriber_id, event_slug, billing_result)
+                # Remove from subscribers list
+                agent.subscribers.discard(subscriber_id)
+        
+        # If no subscribers left with sufficient balance, skip digest
+        if not agent.subscribers:
+            logger.warning(f"No subscribers with sufficient balance for {event_slug}. Skipping digest.")
+            return
+        
         digest = await grok_engine.synthesize_hourly_digest(
             event_question=agent.event_question,
             analyzed_tweets=recent_intelligence
         )
-        
-        # Track Grok usage for billing (all subscribers)
-        for subscriber_id in agent.subscribers:
-            self.usage_billing.record_grok_call(subscriber_id, event_slug, "synthesize_digest")
         
         if digest:
             # Send digest to all subscribers
@@ -695,17 +737,41 @@ class AgentManager:
                 await asyncio.sleep(86400)  # 24 hours
                 
                 # Check and charge fee for all subscribers
-                for subscriber_id in agent.subscribers:
+                subscribers_to_remove = []
+                for subscriber_id in list(agent.subscribers):  # Copy to avoid modification during iteration
                     result = await self.usage_billing.check_and_charge_daily_fee(
                         subscriber_id, 
                         event_slug
                     )
                     
-                    if not result['success']:
-                        logger.error(f"Failed to charge daily fee for user {subscriber_id}: {result['message']}")
-                        # TODO: Notify user and potentially pause agent if balance too low
+                    if result.get('should_stop'):
+                        # Insufficient balance - pause monitoring for this user
+                        logger.warning(f"⚠️ User {subscriber_id} low balance: {result['message']}")
+                        await self._notify_low_balance_and_pause(subscriber_id, event_slug, result)
+                        subscribers_to_remove.append(subscriber_id)
+                    elif result.get('charged'):
+                        logger.info(f"✓ Charged daily fee for user {subscriber_id}: ${result['amount']:.2f}")
+                        
+                        # Send low balance warning if present
+                        if result.get('warning'):
+                            logger.info(f"💡 Low balance warning for user {subscriber_id}")
+                            # TODO: Send warning via Telegram
+                            print(f"\n{'='*60}")
+                            print(f"LOW BALANCE WARNING TO USER {subscriber_id}:")
+                            print(result['warning'])
+                            print(f"{'='*60}\n")
                     else:
-                        logger.info(f"✓ Charged daily fee for user {subscriber_id}: {result['message']}")
+                        logger.warning(f"Failed to charge daily fee for user {subscriber_id}: {result.get('message', 'Unknown error')}")
+                
+                # Remove subscribers with insufficient balance
+                for subscriber_id in subscribers_to_remove:
+                    agent.subscribers.discard(subscriber_id)
+                
+                # If no subscribers left, stop the agent
+                if not agent.subscribers:
+                    logger.warning(f"No subscribers left for {event_slug}. Stopping agent.")
+                    await self.stop_agent(event_slug)
+                    break
                         
             except asyncio.CancelledError:
                 break
@@ -723,15 +789,29 @@ class AgentManager:
         logger.info(f"Refining rules for {event_slug}...")
         logger.info(f"  Performance: {metrics.get('relevant_tweets')}/{metrics.get('total_tweets')} relevant")
         
+        # Check balance for ALL subscribers before making Grok call
+        for subscriber_id in agent.subscribers:
+            billing_result = await self.usage_billing.record_grok_call(
+                subscriber_id, event_slug, "refine_ruleset"
+            )
+            
+            if not billing_result.get("success"):
+                # Insufficient balance - pause monitoring for this user
+                logger.warning(f"⚠️ User {subscriber_id} low balance: {billing_result.get('message')}")
+                await self._notify_low_balance_and_pause(subscriber_id, event_slug, billing_result)
+                # Remove from subscribers list
+                agent.subscribers.discard(subscriber_id)
+        
+        # If no subscribers left with sufficient balance, skip refinement
+        if not agent.subscribers:
+            logger.warning(f"No subscribers with sufficient balance for {event_slug}. Skipping refinement.")
+            return
+        
         refined_ruleset = await grok_engine.refine_ruleset(
             event_slug=event_slug,
             current_ruleset=agent.ruleset,
             performance_metrics=metrics
         )
-        
-        # Track Grok usage for billing (all subscribers)
-        for subscriber_id in agent.subscribers:
-            self.usage_billing.record_grok_call(subscriber_id, event_slug, "refine_ruleset")
         
         if refined_ruleset:
             # Update agent ruleset
@@ -768,6 +848,48 @@ class AgentManager:
             
             self.save_agents()
             logger.info(f"✓ Rules refined for {event_slug}")
+    
+    async def _notify_low_balance_and_pause(self, user_id: int, event_slug: str, billing_result: Dict):
+        """
+        Notify user about low balance and pause their monitoring.
+        
+        Args:
+            user_id: The user's Telegram ID
+            event_slug: The event being monitored
+            billing_result: Result from record_grok_call() with balance info
+        """
+        balance = billing_result.get("balance", 0.0)
+        message = billing_result.get("message", "Insufficient balance")
+        
+        # Get event details for notification
+        agent = self.agents.get(event_slug)
+        event_question = agent.event_question if agent else event_slug
+        
+        # Send Telegram notification (this will be handled by bot.py)
+        notification = (
+            f"⚠️ *MONITORING PAUSED*\n\n"
+            f"Your monitoring for:\n"
+            f"_{event_question}_\n\n"
+            f"has been paused due to low balance.\n\n"
+            f"💰 Current Balance: ${balance:.2f} USDC\n\n"
+            f"{message}\n\n"
+            f"To resume monitoring:\n"
+            f"1️⃣ Deposit USDC: /deposit\n"
+            f"2️⃣ Check balance: /balance\n"
+            f"3️⃣ Restart monitoring: /watch"
+        )
+        
+        logger.info(f"📢 Low balance notification for user {user_id}: ${balance:.2f}")
+        
+        # TODO: Send via bot.py telegram integration
+        # For now, just log it
+        print(f"\n{'='*60}")
+        print(f"NOTIFICATION TO USER {user_id}:")
+        print(notification)
+        print(f"{'='*60}\n")
+        
+        # Remove user from all monitoring for this event
+        await self.remove_subscriber(event_slug, user_id)
     
     async def stop_agent(self, event_slug: str):
         """Stop an agent"""
