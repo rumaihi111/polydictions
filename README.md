@@ -4,6 +4,19 @@
 
 Polydictor is an AI-powered intelligence platform that monitors Twitter for Polymarket events. Users paste a Polymarket URL, and an AI agent automatically configures monitoring, analyzes tweets, and delivers actionable insights via Telegram.
 
+## 🚀 Quick Start
+
+**Want to run the bot right now?** See **[START_BOT.md](START_BOT.md)** - 3 minute setup!
+
+```bash
+git clone https://github.com/rumaihi111/polydictions.git
+cd polydictions
+cp .env.example .env
+# Edit .env with your API keys
+pip install -r requirements.txt
+python bot.py
+```
+
 ## 🎯 Overview
 
 Polydictor transforms prediction market research by:

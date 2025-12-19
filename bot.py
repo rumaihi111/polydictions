@@ -25,6 +25,7 @@ class UserStates(StatesGroup):
 
 # Import new features
 from features import Watchlist, Categories, Alerts, NewsTracker
+from payment_system import PaymentSystem
 
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
@@ -578,6 +579,7 @@ class PolydictionsBot:
         self.categories = Categories()
         self.alerts = Alerts()
         self.news_tracker = NewsTracker()
+        self.payment_system = PaymentSystem()
 
         self.setup_handlers()
 
@@ -608,6 +610,12 @@ class PolydictionsBot:
         self.dp.message.register(self.cmd_alerts, Command("alerts"))
         self.dp.message.register(self.cmd_rmalert, Command("rmalert"))
         self.dp.message.register(self.cmd_interval, Command("interval"))
+        
+        # Wallet commands
+        self.dp.message.register(self.cmd_balance, Command("balance"))
+        self.dp.message.register(self.cmd_withdraw, Command("withdraw"))
+        self.dp.message.register(self.cmd_deposit, Command("deposit"))
+        self.dp.message.register(self.cmd_mystatus, Command("mystatus"))
 
         # State handlers - waiting for user input
         self.dp.message.register(self.handle_deal_link, StateFilter(UserStates.waiting_for_deal_link))
@@ -1279,6 +1287,128 @@ class PolydictionsBot:
                 f"❌ Minimum interval is 3 minutes.\n\n"
                 f"Example: /interval 3"
             )
+
+    async def cmd_balance(self, message: Message):
+        """Show user's wallet balance"""
+        user_id = message.from_user.id
+        
+        # Get or create wallet
+        wallet = self.payment_system.get_user_wallet(user_id)
+        balance = await self.payment_system.check_user_balance(user_id)
+        
+        text = (
+            f"💰 <b>Your Wallet</b>\n\n"
+            f"<b>Address:</b>\n<code>{wallet['address']}</code>\n\n"
+            f"<b>Balance:</b> {balance:.2f} USDC\n\n"
+        )
+        
+        if balance >= 5.0:
+            days_remaining = int(balance / 2.5)  # Rough estimate at $2.50/day
+            text += f"<b>Estimated monitoring:</b> ~{days_remaining} days\n\n"
+        else:
+            text += f"⚠️ <b>Minimum balance:</b> 5 USDC required to start monitoring\n\n"
+        
+        text += (
+            f"<b>💳 Deposit USDC:</b>\n"
+            f"Send USDC (Solana) to the address above\n\n"
+            f"<b>💸 Withdraw:</b>\n"
+            f"/withdraw &lt;address&gt; [amount]\n\n"
+            f"<b>📊 Pricing:</b>\n"
+            f"• Grok analysis: $0.01 per call\n"
+            f"• TwitterAPI.io: $2.00 per 24 hours\n"
+            f"• Total: ~$2.50/day per event"
+        )
+        
+        await message.answer(text)
+    
+    async def cmd_withdraw(self, message: Message):
+        """Withdraw USDC to external wallet"""
+        user_id = message.from_user.id
+        text = message.text or ""
+        parts = text.split()
+        
+        if len(parts) < 2:
+            await message.answer(
+                "💸 <b>Withdraw USDC</b>\n\n"
+                "<b>Usage:</b>\n"
+                "/withdraw &lt;solana_address&gt; [amount]\n\n"
+                "<b>Examples:</b>\n"
+                "• <code>/withdraw 8zHfXy...pQrS 10.5</code> - Withdraw 10.5 USDC\n"
+                "• <code>/withdraw 8zHfXy...pQrS</code> - Withdraw ALL available USDC\n\n"
+                "⚠️ Make sure the address is correct - transactions cannot be reversed!"
+            )
+            return
+        
+        destination = parts[1]
+        amount = float(parts[2]) if len(parts) > 2 else None
+        
+        await message.answer("⏳ Processing withdrawal...")
+        
+        result = await self.payment_system.withdraw_to_external_wallet(
+            user_id, destination, amount
+        )
+        
+        if result['success']:
+            response_text = (
+                f"✅ <b>Withdrawal Successful!</b>\n\n"
+                f"<b>Amount:</b> {result['amount']:.2f} USDC\n"
+                f"<b>To:</b> <code>{destination[:20]}...</code>\n"
+                f"<b>Signature:</b> <code>{result['signature'][:20]}...</code>\n\n"
+                f"<b>New balance:</b> {result.get('new_balance', 0):.2f} USDC"
+            )
+        else:
+            response_text = f"❌ <b>Withdrawal Failed</b>\n\n{result['message']}"
+        
+        await message.answer(response_text)
+    
+    async def cmd_deposit(self, message: Message):
+        """Show deposit instructions"""
+        user_id = message.from_user.id
+        wallet = self.payment_system.get_user_wallet(user_id)
+        
+        text = (
+            f"💳 <b>Deposit USDC</b>\n\n"
+            f"<b>Your Wallet Address:</b>\n"
+            f"<code>{wallet['address']}</code>\n\n"
+            f"<b>How to deposit:</b>\n"
+            f"1. Send USDC on Solana network to the address above\n"
+            f"2. Balance updates automatically\n"
+            f"3. Start with $10-20 for testing\n\n"
+            f"<b>⚠️ Important:</b>\n"
+            f"• Use Solana network only (NOT Ethereum!)\n"
+            f"• Send USDC only (SPL token)\n"
+            f"• Minimum $5 required to start monitoring\n\n"
+            f"Check balance: /balance"
+        )
+        
+        await message.answer(text)
+    
+    async def cmd_mystatus(self, message: Message):
+        """Show user's active subscriptions and usage"""
+        user_id = message.from_user.id
+        balance = await self.payment_system.check_user_balance(user_id)
+        
+        # Get subscriptions
+        user_subs = [
+            (slug, data) for slug, data in self.payment_system.subscriptions.items()
+            if data.get('user_id') == user_id
+        ]
+        
+        text = f"📊 <b>My Status</b>\n\n"
+        text += f"<b>💰 Balance:</b> {balance:.2f} USDC\n\n"
+        
+        if user_subs:
+            text += f"<b>🔍 Active Monitoring:</b>\n"
+            for slug, data in user_subs:
+                subscribed_at = data.get('subscribed_at', 'Unknown')
+                text += f"• {slug}\n  Started: {subscribed_at[:10]}\n"
+            text += f"\n<b>📈 Usage:</b>\n"
+            text += f"Use /usage &lt;event&gt; for detailed breakdown\n"
+        else:
+            text += f"<b>No active monitoring</b>\n\n"
+            text += f"Start monitoring with /watch &lt;event&gt;\n"
+        
+        await message.answer(text)
 
     async def check_new_events(self):
         global seen_events
