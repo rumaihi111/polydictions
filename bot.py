@@ -829,7 +829,7 @@ class PolydictionsBot:
             await processing.edit_text(f"❌ Error: {str(e)}")
 
     async def handle_watch_link(self, message: Message, state: FSMContext):
-        """Handle link sent after /watch command"""
+        """Handle link sent after /watch command - create agent with Grok + Twitter"""
         await state.clear()
 
         url = message.text.strip() if message.text else ""
@@ -849,11 +849,107 @@ class PolydictionsBot:
 
         user_id = message.from_user.id
 
-        if self.watchlist.add(user_id, slug):
-            await message.answer(f"✅ Added <b>{slug}</b> to your watchlist!")
-            logger.info(f"User {user_id} added {slug} to watchlist")
-        else:
-            await message.answer(f"ℹ️ <b>{slug}</b> is already in your watchlist.")
+        # Check if already monitoring with agent
+        if agent_manager.is_user_subscribed(slug, user_id):
+            await message.answer(
+                f"ℹ️ You're already monitoring <b>{slug}</b>\n\n"
+                f"Use /mystatus to see your active subscriptions"
+            )
+            return
+
+        processing = await message.answer("⏳ Setting up monitoring...\n\n1️⃣ Fetching event data...")
+
+        try:
+            # Fetch event data from Polymarket
+            event_data = await PolymarketAPI.fetch_event_by_slug(slug)
+            
+            if not event_data:
+                await processing.edit_text("❌ Event not found on Polymarket")
+                return
+
+            # Get event question
+            markets = event_data.get('markets', [])
+            if not markets:
+                await processing.edit_text("❌ Event has no markets")
+                return
+            
+            event_question = markets[0].get('question', slug)
+            
+            await processing.edit_text(
+                f"⏳ Setting up monitoring...\n\n"
+                f"1️⃣ Event: {event_question}\n"
+                f"2️⃣ Creating agent with Grok AI..."
+            )
+
+            # Create or get agent
+            agent = agent_manager.agents.get(slug)
+            
+            if not agent:
+                # Create new agent (this uses Grok + TwitterAPI.io)
+                agent = await agent_manager.create_agent(
+                    event_slug=slug,
+                    event_question=event_question,
+                    initial_subscriber=user_id
+                )
+                
+                if not agent:
+                    await processing.edit_text(
+                        "❌ Failed to create monitoring agent\n\n"
+                        "This could be due to:\n"
+                        "• Insufficient balance (need $5 minimum)\n"
+                        "• Grok API issue\n"
+                        "• No relevant Twitter accounts found\n\n"
+                        "Check /balance and try again"
+                    )
+                    return
+                
+                await processing.edit_text(
+                    f"⏳ Setting up monitoring...\n\n"
+                    f"1️⃣ Event: {event_question}\n"
+                    f"2️⃣ Agent created ✅\n"
+                    f"3️⃣ Starting Twitter monitoring..."
+                )
+                
+                # Start the agent
+                await agent_manager.start_agent(slug)
+                
+            else:
+                # Add user to existing agent
+                agent_manager.add_subscriber(slug, user_id)
+
+            # Success message
+            monitored_accounts = agent.ruleset.get('accounts', [])[:5]
+            priority_nodes = agent.ruleset.get('priority_nodes', [])
+            
+            success_msg = (
+                f"✅ <b>Monitoring Active!</b>\n\n"
+                f"📊 <b>Event:</b> {event_question}\n"
+                f"🔗 https://polymarket.com/event/{slug}\n\n"
+                f"🐦 <b>Monitoring {len(monitored_accounts)} Twitter accounts:</b>\n"
+            )
+            
+            for acc in monitored_accounts:
+                success_msg += f"  • @{acc}\n"
+            
+            success_msg += (
+                f"\n🚨 <b>Priority alerts for:</b>\n"
+                f"  • {len(priority_nodes)} critical developments\n\n"
+                f"💰 <b>Cost:</b>\n"
+                f"  • $0.01 per Grok analysis\n"
+                f"  • $2.00 per day for Twitter monitoring\n\n"
+                f"📊 Check /mystatus for details\n"
+                f"💵 Check /balance for your funds"
+            )
+            
+            await processing.edit_text(success_msg)
+            logger.info(f"User {user_id} started monitoring {slug} with agent (via link)")
+
+        except Exception as e:
+            logger.error(f"Error in handle_watch_link: {e}", exc_info=True)
+            await processing.edit_text(
+                f"❌ Error setting up monitoring: {str(e)}\n\n"
+                f"Please try again or contact support"
+            )
 
     async def cmd_help(self, message: Message):
         text = (
