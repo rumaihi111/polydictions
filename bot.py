@@ -874,6 +874,8 @@ class PolydictionsBot:
                 return
             
             event_question = markets[0].get('question', slug)
+            event_description = event_data.get('description', '')
+            category = event_data.get('category', 'other')
             
             await processing.edit_text(
                 f"⏳ Setting up monitoring...\n\n"
@@ -889,6 +891,8 @@ class PolydictionsBot:
                 agent = await agent_manager.create_agent(
                     event_slug=slug,
                     event_question=event_question,
+                    event_description=event_description,
+                    category=category,
                     initial_subscriber=user_id
                 )
                 
@@ -1148,6 +1152,8 @@ class PolydictionsBot:
                 return
             
             event_question = markets[0].get('question', slug)
+            event_description = event_data.get('description', '')
+            category = event_data.get('category', 'other')
             
             await processing.edit_text(
                 f"⏳ Setting up monitoring...\n\n"
@@ -1163,6 +1169,8 @@ class PolydictionsBot:
                 agent = await agent_manager.create_agent(
                     event_slug=slug,
                     event_question=event_question,
+                    event_description=event_description,
+                    category=category,
                     initial_subscriber=user_id
                 )
                 
