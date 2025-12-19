@@ -1194,15 +1194,34 @@ class PolydictionsBot:
                 user_agents.append((event_slug, agent))
 
         if not user_agents:
-            await message.answer(
-                "📋 <b>You're not monitoring any events</b>\n\n"
-                "Start monitoring with:\n/watch &lt;polymarket-link&gt;\n\n"
-                "You'll get:\n"
-                "🧠 Grok AI analysis\n"
-                "🐦 Real-time Twitter monitoring\n"
-                "🚨 Priority alerts\n"
-                "📊 Hourly digests"
-            )
+            # Check if user has old watchlist data (before agent integration)
+            old_watchlist = self.watchlist.get(user_id)
+            
+            if old_watchlist:
+                await message.answer(
+                    f"📋 <b>You have {len(old_watchlist)} events in your old watchlist</b>\n\n"
+                    f"⚠️ These are NOT being monitored with Grok AI + Twitter yet.\n\n"
+                    f"<b>To activate full monitoring:</b>\n"
+                    f"Use /watch &lt;polymarket-link&gt; for each event\n\n"
+                    f"<b>Old watchlist events:</b>\n" +
+                    "\n".join([f"  • {slug}" for slug in old_watchlist[:10]]) +
+                    (f"\n  • ... and {len(old_watchlist) - 10} more" if len(old_watchlist) > 10 else "") +
+                    f"\n\n<b>What you'll get with /watch:</b>\n"
+                    f"🧠 Grok AI analysis\n"
+                    f"🐦 Real-time Twitter monitoring\n"
+                    f"🚨 Priority alerts\n"
+                    f"📊 Hourly digests"
+                )
+            else:
+                await message.answer(
+                    "📋 <b>You're not monitoring any events</b>\n\n"
+                    "Start monitoring with:\n/watch &lt;polymarket-link&gt;\n\n"
+                    "You'll get:\n"
+                    "🧠 Grok AI analysis\n"
+                    "🐦 Real-time Twitter monitoring\n"
+                    "🚨 Priority alerts\n"
+                    "📊 Hourly digests"
+                )
             return
 
         msg = ["📋 <b>Your Active Monitoring:</b>\n"]
