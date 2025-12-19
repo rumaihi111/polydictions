@@ -26,6 +26,7 @@ class UserStates(StatesGroup):
 # Import new features
 from features import Watchlist, Categories, Alerts, NewsTracker
 from payment_system import PaymentSystem
+from agent import agent_manager
 
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
@@ -1002,7 +1003,7 @@ class PolydictionsBot:
 
     # Watchlist commands
     async def cmd_watch(self, message: Message, state: FSMContext):
-        """Add event to watchlist"""
+        """Add event to watchlist with Grok + TwitterAPI.io monitoring"""
         user_id = message.from_user.id
         text = message.text or ""
         parts = text.split(maxsplit=1)
@@ -1011,7 +1012,12 @@ class PolydictionsBot:
             # No link provided - ask for it and wait
             await message.answer(
                 "🔗 <b>Send me a Polymarket link to watch</b>\n\n"
-                "Example:\nhttps://polymarket.com/event/btc-price-2025"
+                "Example:\nhttps://polymarket.com/event/btc-price-2025\n\n"
+                "🧠 <b>You'll get:</b>\n"
+                "• Grok AI analysis of tweets\n"
+                "• Real-time Twitter monitoring\n"
+                "• Priority alerts for critical developments\n"
+                "• Hourly intelligence digests"
             )
             await state.set_state(UserStates.waiting_for_watch_link)
             return
@@ -1021,49 +1027,110 @@ class PolydictionsBot:
         if not slug:
             slug = url_or_slug
 
-        if self.watchlist.add(user_id, slug):
-            await message.answer(f"✅ Added <b>{slug}</b> to your watchlist!\n\n⏳ Fetching Market Context...")
-            logger.info(f"User {user_id} added {slug} to watchlist")
+        # Check if already watching
+        if agent_manager.is_user_subscribed(slug, user_id):
+            await message.answer(
+                f"ℹ️ You're already monitoring <b>{slug}</b>\n\n"
+                f"Use /mystatus to see your active subscriptions"
+            )
+            return
 
-            # Fetch and send initial Market Context
-            try:
-                context = await PolymarketAPI.fetch_market_context(slug)
-                if context:
-                    # Cache it for future comparison
-                    self.news_tracker.check_for_update(slug, context)
+        processing = await message.answer("⏳ Setting up monitoring...\n\n1️⃣ Fetching event data...")
 
-                    context_msg = f"🧠 <b>Market Context for {slug}:</b>\n\n{context[:2000]}"
-                    if len(context) > 2000:
-                        context_msg += "...\n\n<i>Use /deal for full context</i>"
-                    await message.answer(context_msg)
-                else:
-                    await message.answer("⚠️ Could not fetch Market Context for this event.")
-            except Exception as e:
-                logger.error(f"Error fetching context for {slug}: {e}")
-                await message.answer("⚠️ Error fetching Market Context.")
-        else:
-            # Already in watchlist - check for updates
-            await message.answer(f"⏳ <b>{slug}</b> is already in your watchlist. Checking for updates...")
+        try:
+            # Fetch event data from Polymarket
+            event_data = await PolymarketAPI.fetch_event_by_slug(slug)
+            
+            if not event_data:
+                await processing.edit_text("❌ Event not found on Polymarket")
+                return
 
-            try:
-                context = await PolymarketAPI.fetch_market_context(slug)
-                if context:
-                    update = self.news_tracker.check_for_update(slug, context)
-                    if update:
-                        context_msg = f"📰 <b>New updates for {slug}:</b>\n\n{context[:2000]}"
-                        if len(context) > 2000:
-                            context_msg += "...\n\n<i>Use /deal for full context</i>"
-                        await message.answer(context_msg)
-                    else:
-                        await message.answer(f"ℹ️ No new updates for <b>{slug}</b> in the last 5 minutes.")
-                else:
-                    await message.answer("⚠️ Could not fetch Market Context.")
-            except Exception as e:
-                logger.error(f"Error checking updates for {slug}: {e}")
-                await message.answer("⚠️ Error checking for updates.")
+            # Get event question
+            markets = event_data.get('markets', [])
+            if not markets:
+                await processing.edit_text("❌ Event has no markets")
+                return
+            
+            event_question = markets[0].get('question', slug)
+            
+            await processing.edit_text(
+                f"⏳ Setting up monitoring...\n\n"
+                f"1️⃣ Event: {event_question}\n"
+                f"2️⃣ Creating agent with Grok AI..."
+            )
+
+            # Create or get agent
+            agent = agent_manager.agents.get(slug)
+            
+            if not agent:
+                # Create new agent (this uses Grok + TwitterAPI.io)
+                agent = await agent_manager.create_agent(
+                    event_slug=slug,
+                    event_question=event_question,
+                    initial_subscriber=user_id
+                )
+                
+                if not agent:
+                    await processing.edit_text(
+                        "❌ Failed to create monitoring agent\n\n"
+                        "This could be due to:\n"
+                        "• Insufficient balance (need $5 minimum)\n"
+                        "• Grok API issue\n"
+                        "• No relevant Twitter accounts found\n\n"
+                        "Check /balance and try again"
+                    )
+                    return
+                
+                await processing.edit_text(
+                    f"⏳ Setting up monitoring...\n\n"
+                    f"1️⃣ Event: {event_question}\n"
+                    f"2️⃣ Agent created ✅\n"
+                    f"3️⃣ Starting Twitter monitoring..."
+                )
+                
+                # Start the agent
+                await agent_manager.start_agent(slug)
+                
+            else:
+                # Add user to existing agent
+                agent_manager.add_subscriber(slug, user_id)
+
+            # Success message
+            monitored_accounts = agent.ruleset.get('accounts', [])[:5]
+            priority_nodes = agent.ruleset.get('priority_nodes', [])
+            
+            success_msg = (
+                f"✅ <b>Monitoring Active!</b>\n\n"
+                f"📊 <b>Event:</b> {event_question}\n"
+                f"🔗 https://polymarket.com/event/{slug}\n\n"
+                f"🐦 <b>Monitoring {len(monitored_accounts)} Twitter accounts:</b>\n"
+            )
+            
+            for acc in monitored_accounts:
+                success_msg += f"  • @{acc}\n"
+            
+            success_msg += (
+                f"\n🚨 <b>Priority alerts for:</b>\n"
+                f"  • {len(priority_nodes)} critical developments\n\n"
+                f"💰 <b>Cost:</b>\n"
+                f"  • $0.01 per Grok analysis\n"
+                f"  • $2.00 per day for Twitter monitoring\n\n"
+                f"📊 Check /mystatus for details\n"
+                f"💵 Check /balance for your funds"
+            )
+            
+            await processing.edit_text(success_msg)
+            logger.info(f"User {user_id} started monitoring {slug} with agent")
+
+        except Exception as e:
+            logger.error(f"Error in /watch: {e}", exc_info=True)
+            await processing.edit_text(
+                f"❌ Error setting up monitoring: {str(e)}\n\n"
+                f"Please try again or contact support"
+            )
 
     async def cmd_unwatch(self, message: Message):
-        """Remove event from watchlist"""
+        """Remove event from watchlist and stop agent monitoring"""
         user_id = message.from_user.id
         text = message.text or ""
         parts = text.split(maxsplit=1)
@@ -1074,31 +1141,86 @@ class PolydictionsBot:
 
         slug = parts[1].strip()
 
-        if self.watchlist.remove(user_id, slug):
-            await message.answer(f"✅ Removed <b>{slug}</b> from your watchlist.")
+        # Check if user is subscribed to this agent
+        if not agent_manager.is_user_subscribed(slug, user_id):
+            await message.answer(f"❌ You're not monitoring <b>{slug}</b>")
+            return
+
+        processing = await message.answer("⏳ Stopping monitoring...")
+
+        try:
+            # Remove user from agent
+            removed = await agent_manager.remove_subscriber(slug, user_id)
+            
+            if removed:
+                # Check if agent was stopped (no more subscribers)
+                agent = agent_manager.agents.get(slug)
+                
+                if not agent or agent.status == "stopped":
+                    await processing.edit_text(
+                        f"✅ <b>Monitoring stopped for {slug}</b>\n\n"
+                        f"• Agent removed from your subscriptions\n"
+                        f"• Twitter monitoring stopped (no active subscribers)\n"
+                        f"• All tasks cancelled\n\n"
+                        f"Your balance has been preserved. Use /balance to check."
+                    )
+                else:
+                    await processing.edit_text(
+                        f"✅ <b>Removed from your watchlist: {slug}</b>\n\n"
+                        f"• Agent still active for other subscribers\n"
+                        f"• No further charges to your account\n\n"
+                        f"Use /balance to check your funds."
+                    )
+                
+                logger.info(f"User {user_id} unwatched {slug}")
+            else:
+                await processing.edit_text("❌ Failed to remove subscription")
+
+        except Exception as e:
+            logger.error(f"Error in /unwatch: {e}")
+            await processing.edit_text(f"❌ Error: {str(e)}")
             logger.info(f"User {user_id} removed {slug} from watchlist")
         else:
             await message.answer("⚠️ Event not found in your watchlist.")
 
     async def cmd_watchlist(self, message: Message):
-        """Show user's watchlist"""
+        """Show user's active agent subscriptions"""
         user_id = message.from_user.id
-        watchlist = self.watchlist.get(user_id)
+        
+        # Get all agents user is subscribed to
+        user_agents = []
+        for event_slug, agent in agent_manager.agents.items():
+            if user_id in agent.subscribers:
+                user_agents.append((event_slug, agent))
 
-        if not watchlist:
+        if not user_agents:
             await message.answer(
-                "📋 <b>Your Watchlist is empty</b>\n\n"
-                "Add events with:\n/watch &lt;event-slug&gt;"
+                "📋 <b>You're not monitoring any events</b>\n\n"
+                "Start monitoring with:\n/watch &lt;polymarket-link&gt;\n\n"
+                "You'll get:\n"
+                "🧠 Grok AI analysis\n"
+                "🐦 Real-time Twitter monitoring\n"
+                "🚨 Priority alerts\n"
+                "📊 Hourly digests"
             )
             return
 
-        msg = ["📋 <b>Your Watchlist:</b>\n"]
-        for idx, slug in enumerate(watchlist, 1):
-            msg.append(f"{idx}. {slug}")
-            msg.append(f"   https://polymarket.com/event/{slug}\n")
+        msg = ["📋 <b>Your Active Monitoring:</b>\n"]
+        
+        for idx, (slug, agent) in enumerate(user_agents, 1):
+            status_icon = "🟢" if agent.status == "active" else "🔴"
+            monitored_count = len(agent.ruleset.get('accounts', []))
+            
+            msg.append(
+                f"{idx}. {status_icon} <b>{slug}</b>\n"
+                f"   📊 {agent.event_question[:60]}...\n"
+                f"   🐦 Monitoring {monitored_count} Twitter accounts\n"
+                f"   🔗 https://polymarket.com/event/{slug}\n"
+            )
 
-        msg.append(f"\n<b>Total:</b> {len(watchlist)} events")
-        msg.append("\nUse /unwatch &lt;slug&gt; to remove")
+        msg.append(f"\n<b>Total:</b> {len(user_agents)} events")
+        msg.append("\nUse /unwatch &lt;slug&gt; to stop monitoring")
+        msg.append("Use /mystatus for detailed stats")
 
         await message.answer("\n".join(msg))
 
@@ -1557,40 +1679,37 @@ class PolydictionsBot:
                             logger.error(f"Error checking news for {slug}: {e}")
                             no_updates.append(slug)
 
-                    # Build and send status message
+                    # Build and send notification ONLY if there are actual updates
                     try:
-                        msg_parts = []
-                        interval_min = self.news_tracker.get_interval_minutes(user_id)
+                        # Only notify if there are ACTUAL updates (not status reports)
+                        if updates:
+                            msg_parts = []
+                            interval_min = self.news_tracker.get_interval_minutes(user_id)
 
-                        for slug, context in updates:
-                            msg_parts.append(
-                                f"📰 <b>{slug}</b>\n"
-                                f"🔗 https://polymarket.com/event/{slug}\n"
-                                f"🧠 <b>New Update:</b>\n{context[:800]}"
-                            )
-                            if len(context) > 800:
-                                msg_parts.append("...\n<i>Use /deal for full context</i>")
+                            for slug, context in updates:
+                                msg_parts.append(
+                                    f"📰 <b>New Update: {slug}</b>\n"
+                                    f"🔗 https://polymarket.com/event/{slug}\n\n"
+                                    f"🧠 <b>Market Context:</b>\n{context[:800]}"
+                                )
+                                if len(context) > 800:
+                                    msg_parts.append("...\n\n<i>Use /deal for full details</i>")
 
-                        if no_updates:
-                            if len(no_updates) == 1:
-                                msg_parts.append(f"ℹ️ No new updates for <b>{no_updates[0]}</b>")
-                            else:
-                                no_update_lines = [f"<b>{slug}</b>\nℹ️ No new updates" for slug in no_updates]
-                                msg_parts.append("\n\n".join(no_update_lines))
-
-                        if msg_parts:
-                            header = f"📋 <b>Watchlist Status</b> ({datetime.now().strftime('%H:%M')})\n⏱️ Next update in {interval_min} min\n\n"
+                            header = f"📋 <b>Watchlist Alert</b> ({datetime.now().strftime('%H:%M')})\n\n"
                             full_msg = header + "\n\n".join(msg_parts)
 
                             if len(full_msg) > 4000:
                                 full_msg = full_msg[:3950] + "\n\n<i>...truncated</i>"
 
                             await self.bot.send_message(user_id, full_msg)
-                            logger.info(f"Sent watchlist status to user {user_id}")
+                            logger.info(f"Sent {len(updates)} watchlist updates to user {user_id}")
                             await asyncio.sleep(0.5)
+                        else:
+                            # No updates - just log it, don't spam the user
+                            logger.debug(f"No updates for user {user_id} watchlist (checked {len(user_slugs)} events)")
 
                     except Exception as e:
-                        logger.error(f"Failed to send status to {user_id}: {e}")
+                        logger.error(f"Failed to send updates to {user_id}: {e}")
 
             except Exception as e:
                 logger.error(f"Error in news monitoring: {e}")
@@ -1607,13 +1726,13 @@ class PolydictionsBot:
         api_server = APIServer(port=8765)
         await api_server.start()
 
-        # Event monitoring disabled - using Polydictor intelligence instead
+        # Event monitoring disabled - using agent system with Grok + TwitterAPI.io
+        # Old simple watchlist monitoring also disabled - agents handle everything
         # asyncio.create_task(self.check_new_events())
-
-        # Start watchlist news monitoring
-        asyncio.create_task(self.check_watchlist_news())
+        # asyncio.create_task(self.check_watchlist_news())
 
         logger.info("Bot started with API server on port 8765")
+        logger.info("Agent system ready: Grok AI + TwitterAPI.io monitoring")
         await self.dp.start_polling(self.bot, allowed_updates=["message"])
 
 
